@@ -7,7 +7,6 @@ body{
     justify-content: center;
 }
 
-/*CAMBIO DE DIV*/
 div{
     margin-top: 1em;
     height: 600px;
@@ -16,7 +15,6 @@ div{
     background-color: rgba(41, 47, 68, 0.877);
 }
 
-/*CAMBIO FORM*/
 div > form {
     height: 85%;
     display: flex;

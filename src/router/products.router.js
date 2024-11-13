@@ -1,94 +1,48 @@
-const {Router}          = require('express')
-const router            = Router()
-const { productModel }  = require('../models/products.model');
+const {Router}             = require('express')
+const router               = Router()
+const passportCall         = require('../middleware/passport/passportCalls.js')
+const authorization        = require('../middleware/passport/authorization.middleware.js')
+const { productService }   = require('../services/index.js')
 
-const paginate = async(limit, page) => {
+router.post('/', passportCall('jwt'), authorization('admin'), async (req, res) => { 
 
-    const listaProductos          = await productModel.paginate({}, {limit, page})
+    try {
+
+        const { body } = req
+
+        if( !body.title         ||
+            !body.description   ||
+            !body.code          ||
+            !body.price         || 
+            !body.stock         ||
+            !body.category    
+        ){
+            return res.status(400).send({status: 'error', error: 'Faltan datos.' })
+        }         
+
+        if(isNaN(body.price) || isNaN(body.stock)) return res.status(400).send({status: 'error', error: 'El tipo de dato es incorrecto.'})
+        
+
+        const newProduct = await productService.createProduct(body) 
+        res.status(200).send({status:'success', message:'Nuevo producto creado.', data:newProduct})
+
+    } catch (error) {
+
+        console.log(error.message)
+        res.status(500).send("Error.")
+
+    }
     
-    const productosResultadoFinal = listaProductos.docs.map( prod => {
 
-        const{_id, ...rest} = prod.toObject()
-        return rest
-
-    })
-
-    const respuesta = ({
-        status:         'success', 
-        payload:        productosResultadoFinal, 
-        'totalPages':   listaProductos.totalPages,
-        'prevPage':     listaProductos.prevPage,
-        'nextPage':     listaProductos.nextPage,
-        'page':         listaProductos.page,
-        'hasPrevPage':  listaProductos.hasPrevPage,
-        'hasNextPage':  listaProductos.hasNextPage,
-        'prevLink':     null, 
-        'nextLink':     null
-    })
-
-    return respuesta
-
-}
-
-const ordernarListaAsc = async () => {
-
-    listaProductosOrdenada = await productModel.aggregate([
-        {
-            $sort: {
-                price: 1
-            }
-        }
-    ])
-
-    return listaProductosOrdenada;
-
-}
-
-const ordernarListaDesc = async () => {
-
-    listaProductosOrdenada = await productModel.aggregate([
-        {
-            $sort: {
-                price: -1
-            }
-        }
-    ])
-
-    return listaProductosOrdenada;
-}
+})
 
 router.get('/', async (req, res) => {
 
     try {
 
-        let limit = req.query.limit || 10
-        let page  = req.query.page  || 1
-        let orden = req.query.sort
-        let respuestaFinal
-
-
-        if(orden == null || orden == undefined){
-
-            const respuesta = await paginate(limit,page)
-
-            res.send({respuesta})
-    
-        }else{
-     
-            if (orden != 'asc' && orden != 'desc') {
-               return res.status(400).send({status: 'error', error: 'Los datos son incorrectos.' })  
-            }
-            
-            if(orden == 'asc') {       
-                respuestaFinal = await ordernarListaAsc()
-            }else{
-
-                respuestaFinal = await ordernarListaDesc()
-            }
-    
-            res.send({status: 'success', data: respuestaFinal})
-            
-        }
+        const productos = await productService.getProducts({})
+        res.send({status: 'success', data: productos}) 
+        
         
     } catch (error) {
 
@@ -104,10 +58,10 @@ router.get('/:id', async (req, res) => {
 
     try {
 
-        const {id}    = req.params
-        const product = await productModel.findOne({_id: id})
+        const {id}     = req.params
+        const producto = await productService.getProduct({_id:id})
 
-        res.send({status: 'success', payload: product})
+        res.send({status: 'success', payload: producto})
 
     } catch (error) {
 
@@ -118,52 +72,16 @@ router.get('/:id', async (req, res) => {
     
 })
 
-router.post('/', async (req, res) => {
-
-    try {
-
-        const { body } = req
-    
-        if( !body.title         ||
-            !body.description   ||
-            !body.code          ||
-            !body.price         || 
-            !body.stock         ||
-            !body.category    
-        ){
-            return res.status(400).send({status: 'error', error: 'Faltan datos.' })
-        } 
-    
-        if(isNaN(body.price) || isNaN(body.stock)){
-            return res.status(400).send({status: 'error', error: 'El tipo de dato es incorrecto.'})
-        }
-    
-        const newProduct = await productModel.create(body)
-        console.log(newProduct)
-    
-        res.status(200).send({status:'success', message:'Nuevo producto creado.', data:newProduct})
-
-    } catch (error) {
-
-        console.log(error)
-        res.status(500).send("Error.")
-
-    }
-    
-
-})
-
-router.put('/:id', async (req, res) => {
+router.put('/:id', passportCall('jwt'), authorization('admin'), async (req, res) => {
 
     try {
 
         const { id }        = req.params
         const prodToReplace = req.body 
-
-        const datosProduct  = await productModel.findById({_id:id})
-        const result        = await productModel.updateOne({_id: id}, prodToReplace)
+        const datosProduct  = await productService.getProduct({_id:id})
+        const result        = await productService.updateProduct(id, prodToReplace)
     
-        res.send({status: 'succes', message: `El producto ${datosProduct.title} ha sido actualizado.`})
+        res.send({status: 'succes', message: `Se actualizó el producto: ${datosProduct.title}.`})
 
     } catch (error) {
 
@@ -174,16 +92,15 @@ router.put('/:id', async (req, res) => {
     
 })
 
-router.delete('/:id', async (req, res) => {
-
+router.delete('/:id', passportCall('jwt'), authorization('admin'), async (req, res) => {
+ 
     try {
 
-        const {id}   = req.params
+        const {id}         = req.params
+        const datosProduct = await productService.getProduct({_id:id})
+        const result       = await productService.deleteProduct(id)
 
-        const datosProduct = await productModel.findById({_id:id})
-        const result = await productModel.deleteOne({_id:id})
-
-        res.send({status: 'succes', message: `El producto ${datosProduct.title} ha sido borrado.`})
+        res.send({status: 'succes', message: `Se borró el producto ${datosProduct.title} del almacenamiento.`})
 
     } catch (error) {
 

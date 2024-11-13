@@ -1,13 +1,12 @@
 const { Router }                      = require('express')
-const { UserManagerMongo }            = require('../managers/Mongo/usersManager.mongo.js')
 const { createHash, isValidPassword } = require('../utils/bcrypt.js')
 const { generateToken }               = require('../utils/jsonwebtoken.js')
 const passportCall                    = require('../middleware/passport/passportCalls.js')
-const authorization                   = require('../middleware/passport/authorization.middleware.js')
+const UserDto                         = require('../dto/users.dto.js')
+const AdminDto                        = require('../dto/admin.dto.js')
+const { userService }                 = require('../services/index.js')
 
-const router      = Router()
-const userService = new UserManagerMongo()
-
+const router = Router()
 
 router.post('/register', async ( req, res ) => {
 
@@ -15,7 +14,7 @@ router.post('/register', async ( req, res ) => {
 
     if(!email || !password) return res.status(400).send({status: 'error', error: 'Email y password son obligatorios.'})
 
-    const userFound = await userService.getUser({email})
+    const userFound = await userService.getUser( {email: email} )
     if(userFound) return res.status(401).send({status: 'error', error: 'El usuario ya existe.'})
 
     const newUser = {
@@ -36,9 +35,9 @@ router.post('/register', async ( req, res ) => {
 
 router.post('/login', async (req, res) => {
 
-    const { email, password } = req.body
+    const { email, password } = req.body 
 
-    const userFound = await userService.getUser({email})
+    const userFound = await userService.getUser( {email: email} )
     if(!userFound) return res.status(401).send({status: 'error', error: 'No existe el usuario.'})
 
     if(!isValidPassword(password, userFound.password)) return res.send({status: 'error', error: 'Credenciales incorrectas.'})
@@ -57,11 +56,25 @@ router.post('/login', async (req, res) => {
         data: userFound, 
         token
     })
+    
 })
 
+router.get('/current', passportCall('jwt'),  async (req, res) => {
 
-router.get('/current', passportCall('jwt'), authorization('admin'), (req, res) => {
-    res.send({dataUser: req.user, message: 'datos sensibles'})
+    const datosUser = await userService.getUser({email: req.user.email})
+    
+    if(req.user.role == 'admin'){
+        
+        const adminDto = new AdminDto(datosUser)
+        res.send({dataUser: adminDto, message: 'datos sensibles'})
+
+    }else{
+
+        let userDto = new UserDto(datosUser) 
+        res.send({dataUser: userDto, message: 'datos no sensibles'})
+    }
+
+
 })
 
 module.exports = router
